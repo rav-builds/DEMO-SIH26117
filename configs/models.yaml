@@ -1,0 +1,143 @@
+# ==============================================================================
+# Sovereign AI Workbench - Models and Serving Backends Configuration
+# Model-Agnostic Engine Configuration
+# ==============================================================================
+
+# Active Serving Backend Selection
+# Configured via MODEL_BACKEND in .env (Options: 'ollama' | 'mlx' | 'vllm')
+active_backend: "ollama"
+
+serving_backends:
+  # Path 1: Ollama / GGUF Serving (CPU / low-VRAM laptops & fallback)
+  ollama:
+    base_url: "http://localhost:11434"
+    openai_base_url: "http://localhost:11434/v1"
+    timeout_seconds: 120.0
+    default_model: "ornith-1.5:9b-q4_k_m"
+    launch_command: "ollama run ornith-1.5:9b-q4_k_m"
+    modelfile_instructions: |
+      # For multimodal vision with mmproj in Ollama:
+      FROM ./Ornith-1.5-9B-Q4_K_M.gguf
+      ADAPTER ./mmproj-Ornith-1.5-9B-f16.gguf
+      # Build command: ollama create ornith-1.5:9b-q4_k_m -f Modelfile
+
+  # Path 2: MLX Serving (Apple Silicon MacBooks)
+  mlx:
+    base_url: "http://localhost:1234/v1"
+    openai_base_url: "http://localhost:1234/v1"
+    alt_base_url: "http://localhost:8080/v1"
+    timeout_seconds: 120.0
+    default_model: "ornith-ai/Ornith-1.5-9B-MLX"
+    launch_command_lmstudio: "Load ornith-ai/Ornith-1.5-9B-MLX in LM Studio and start Local Server (port 1234)"
+    launch_command_cli: "python -m mlx_lm.server --model ornith-ai/Ornith-1.5-9B-MLX --port 8080"
+
+  # Path 3: vLLM High-Performance Serving (Dedicated GPU Venue/Server)
+  vllm:
+    base_url: "http://localhost:8000/v1"
+    openai_base_url: "http://localhost:8000/v1"
+    timeout_seconds: 120.0
+    default_model: "ornith-ai/Ornith-1.5-9B"
+    launch_command: 'vllm serve "ornith-ai/Ornith-1.5-9B" --port 8000 --enable-auto-tool-choice --tool-call-parser qwen3_xml --reasoning-parser qwen3 --max-model-len 32768 --gpu-memory-utilization 0.90 --enable-chunked-prefill'
+
+# Vector Database (Qdrant)
+qdrant:
+  host: "localhost"
+  port: 6333
+  url: "http://localhost:6333"
+  collection_name: "sovereign_knowledge_base"
+  distance_metric: "Cosine"
+  vector_size: 768
+
+# Default Model Allocations
+defaults:
+  temperature: 0.7
+  top_p: 0.9
+  max_tokens: 4096
+
+# Model Catalog by Role
+models:
+  # Reasoning & Agentic LLM Role
+  reasoning:
+    - id: "ornith-ai/Ornith-1.5-9B"
+      ollama_tag: "ornith-1.5:9b-q4_k_m"
+      mlx_tag: "ornith-ai/Ornith-1.5-9B-MLX"
+      name: "Ornith 1.5 9B (Self-Scaffolding / Reasoning)"
+      parameters: "8.95B language + 0.46B vision"
+      context_window: 262144
+      tool_calling: true
+      tool_parser: "qwen3_xml"
+      reasoning_parser: "qwen3"
+      quantizations:
+        - "Q4_K_M (~5.8GB)"
+        - "Q5_K_M (~6.6GB)"
+        - "Q6_K (~7.6GB)"
+        - "Q8_0 (~9.8GB)"
+        - "MLX 4-bit / 8-bit"
+      description: "Dense 9B reasoning model with native XML tool calling and thinking trace parsers"
+
+    - id: "llama3:8b"
+      ollama_tag: "llama3:8b"
+      name: "Meta Llama 3 8B"
+      context_window: 8192
+      tool_calling: true
+      description: "General purpose reasoning fallback"
+
+  # Coding & Code Execution Role
+  coding:
+    - id: "ornith-ai/Ornith-1.5-9B"
+      ollama_tag: "ornith-1.5:9b-q4_k_m"
+      mlx_tag: "ornith-ai/Ornith-1.5-9B-MLX"
+      name: "Ornith 1.5 9B (Agentic Code Synthesis)"
+      context_window: 262144
+      tool_calling: true
+      description: "Self-improving code synthesis, refactoring, and tool execution"
+
+    - id: "qwen2.5-coder:7b"
+      ollama_tag: "qwen2.5-coder:7b"
+      name: "Qwen 2.5 Coder 7B"
+      context_window: 32768
+      tool_calling: true
+      description: "Fallback coding engine"
+
+  # Vision & Multimodal Role
+  vision:
+    - id: "ornith-ai/Ornith-1.5-9B"
+      ollama_tag: "ornith-1.5:9b-q4_k_m"
+      mlx_tag: "ornith-ai/Ornith-1.5-9B-MLX"
+      name: "Ornith 1.5 9B (Multimodal Vision Tower)"
+      parameters: "0.46B vision tower + mmproj projector"
+      vision_projector: "mmproj-Ornith-1.5-9B-f16.gguf"
+      context_window: 262144
+      description: "Native multimodal image QA, diagram reasoning, and document layout inspection"
+
+    - id: "llava:latest"
+      ollama_tag: "llava:latest"
+      name: "LLaVA 1.6"
+      description: "Multimodal fallback"
+
+  # Embeddings for RAG
+  embedding:
+    - id: "nomic-embed-text"
+      ollama_tag: "nomic-embed-text"
+      dimension: 768
+      description: "Dense embedding model for knowledge base retrieval"
+
+vision_pipelines:
+  ocr:
+    engine: "tesseract"
+    fallback_engine: "pymupdf_text"
+    supported_extensions:
+      - ".png"
+      - ".jpg"
+      - ".jpeg"
+      - ".tiff"
+      - ".bmp"
+      - ".pdf"
+      - ".docx"
+
+sandbox:
+  runtime: "docker"
+  timeout_seconds: 30
+  max_memory_mb: 256
+  cpu_limit: 1.0
+  network_disabled: true
